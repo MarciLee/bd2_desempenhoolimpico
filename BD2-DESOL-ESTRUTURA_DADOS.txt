@@ -1,0 +1,114 @@
+-- =========================================================
+-- ESTRUTURA DO BANCO DE DATOS: DESEMPENHO OLÍMPICO
+-- OBJETIVO: Rastrear medalhas das últimas 10 edições.
+-- =========================================================
+
+-- 1. Tabela de Edições das Olimpíadas
+-- Armazena o ano e a cidade sede para identificar cada evento.
+CREATE TABLE olimpiada (
+    id_olimpiada SERIAL PRIMARY KEY,
+    ano INT NOT NULL UNIQUE,
+    cidade_sede VARCHAR(50) NOT NULL
+);
+
+-- 2. Tabela de Países
+-- Cadastro dos países participantes (Limite sugerido de 20).
+CREATE TABLE pais (
+    id_pais SERIAL PRIMARY KEY,
+    nome VARCHAR(50) NOT NULL UNIQUE,
+    continente VARCHAR(30)
+);
+
+-- 3. Tabela de Categorias e Modalidades
+-- Organiza os esportes por grupos (Ex: Combate, Invasão).
+CREATE TABLE modalidade (
+    id_modalidade SERIAL PRIMARY KEY,
+    nome_modalidade VARCHAR(50) NOT NULL,
+    categoria VARCHAR(50) 
+);
+
+-- 4. Tabela de Resultados (Fatos/Medalhas)
+-- Registra o desempenho de um país em uma modalidade e edição específica.
+-- INT DEFAULT 0 garante que não existam valores nulos (NULL) nas medalhas.
+CREATE TABLE resultado (
+    id_resultado SERIAL PRIMARY KEY,
+    id_olimpiada INT REFERENCES olimpiada(id_olimpiada),
+    id_pais INT REFERENCES pais(id_pais),
+    id_modalidade INT REFERENCES modalidade(id_modalidade),
+    ouro INT DEFAULT 0,
+    prata INT DEFAULT 0,
+    bronze INT DEFAULT 0
+);
+
+-- 5. Tabela Auxiliar de Ranking Geral
+-- Criada para a Função 01 (VOID) armazenar dados consolidados.
+CREATE TABLE ranking_geral (
+    id_pais INT PRIMARY KEY REFERENCES pais(id_pais),
+    nome_pais VARCHAR(50),
+    total_ouro INT DEFAULT 0,
+    total_prata INT DEFAULT 0,
+    total_bronze INT DEFAULT 0,
+    ultima_atualizacao TIMESTAMP
+);
+
+-- 6. Log de Auditoria
+-- Cria uma tabela de auditoria para rastrear mudanças no quadro de medalhas.
+CREATE TABLE log_medalhas (
+    id_log SERIAL PRIMARY KEY,
+    operacao VARCHAR(20), -- 'INSERÇÃO' ou 'EXCLUSÃO'
+    mensagem TEXT,
+    data_hora TIMESTAMP DEFAULT NOW()
+);
+
+-- =========================================================
+-- POVOAMENTO INICIAL (DML)
+-- =========================================================
+
+-- Inserindo as últimas 10 edições olímpicas
+INSERT INTO olimpiada (ano, cidade_sede) VALUES 
+(1988, 'Seul'), (1992, 'Barcelona'), (1996, 'Atlanta'), (2000, 'Sydney'), 
+(2004, 'Atenas'), (2008, 'Pequim'), (2012, 'Londres'), (2016, 'Rio'), 
+(2021, 'Tóquio'), (2024, 'Paris');
+
+-- Inserindo amostra de países
+INSERT INTO pais (nome, continente) VALUES 
+('Brasil', 'América do Sul'), ('EUA', 'América do Norte'), 
+('China', 'Ásia'), ('França', 'Europa'), ('Japao', 'Ásia'), 
+('Austrália', 'Oceania'), ('Reino Unido', 'Europa'), ('Alemanha', 'Europa'),
+('Egito', 'África');
+
+-- Inserindo modalidades por categoria
+INSERT INTO modalidade (nome_modalidade, categoria) VALUES 
+('Judô', 'Esportes de Combate'), 
+('Natação', 'Esportes de Marca'), 
+('Ginástica Artística', 'Ginástica e Técnicos'), 
+('Futebol', 'Esportes de Invasão'),
+('Skate', 'Novas Modalidades'),
+('Vôlei', 'Esportes de Invasão');
+
+-- Inserindo alguns resultados reais/exemplo para teste
+INSERT INTO resultado (id_olimpiada, id_pais, id_modalidade, ouro, prata, bronze) VALUES 
+-- Paris 2024 (Edição 10)
+(10, 1, 1, 1, 1, 2), -- Brasil (Judô)
+(10, 1, 5, 0, 1, 1), -- Brasil (Skate)
+(10, 2, 2, 8, 10, 7),-- EUA (Natação)
+(10, 3, 3, 5, 1, 2), -- China (Ginástica)
+(10, 4, 4, 1, 0, 0), -- França (Futebol)
+(10, 7, 2, 2, 4, 3), -- Reino Unido (Natação)
+
+-- Tóquio 2021 (Edição 9)
+(9, 5, 5, 3, 1, 1),  -- Japao (Skate)
+(9, 2, 2, 11, 10, 9),-- EUA (Natação)
+(9, 1, 4, 1, 0, 0),  -- Brasil (Futebol)
+(9, 8, 3, 0, 1, 2),  -- Alemanha (Ginástica)
+
+-- Rio 2016 (Edição 8)
+(8, 2, 2, 16, 8, 9), -- EUA (Natação)
+(8, 3, 1, 2, 3, 3),  -- China (Judô)
+(8, 1, 6, 1, 0, 0),  -- Brasil (Vôlei)
+(8, 6, 2, 3, 7, 7),  -- Austrália (Natação)
+
+-- Londres 2012 (Edição 7)
+(7, 2, 2, 16, 9, 10),-- EUA (Natação)
+(7, 7, 2, 9, 5, 12), -- Reino Unido (Natação)
+(7, 8, 6, 1, 0, 0);  -- Alemanha (Vôlei)

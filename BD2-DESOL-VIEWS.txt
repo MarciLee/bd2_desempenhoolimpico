@@ -1,0 +1,105 @@
+-- =========================================================
+-- VIEW 1: QUADRO GERAL DE MEDALHAS
+-- Objetivo: Exibir o ranking histórico total de todos os países, ordenado pela lógica olímpica
+-- oficial (mais ouros, depois pratas, depois bronzes).
+-- =========================================================
+
+CREATE OR REPLACE VIEW v_quadro_medalhas_geral AS
+SELECT 
+    p.nome AS pais,
+    SUM(r.ouro) AS total_ouro,
+    SUM(r.prata) AS total_prata,
+    SUM(r.bronze) AS total_bronze,
+    SUM(r.ouro + r.prata + r.bronze) AS total_geral
+FROM pais p
+LEFT JOIN resultado r ON p.id_pais = r.id_pais
+GROUP BY p.nome
+ORDER BY total_ouro DESC, total_prata DESC, total_bronze DESC;
+
+SELECT * FROM v_quadro_medalhas_geral;
+
+-- =========================================================
+-- VIEW 2: DESEMPENHO POR CATEGORIA
+-- Objetivo: Analisar quais categorias de esporte (ex: Esportes de Combate) trazem mais medalhas
+-- globais. Útil para entender o perfil das Olimpíadas.
+-- =========================================================
+
+CREATE OR REPLACE VIEW v_desempenho_por_categoria AS
+SELECT 
+    p.nome AS "País",
+    m.categoria AS "Categoria",
+    COALESCE(SUM(r.ouro), 0) AS "Ouro",
+    COALESCE(SUM(r.prata), 0) AS "Prata",
+    COALESCE(SUM(r.bronze), 0) AS "Bronze",
+    COALESCE(SUM(r.ouro + r.prata + r.bronze), 0) AS "Total"
+FROM pais p
+JOIN resultado r ON p.id_pais = r.id_pais
+JOIN modalidade m ON r.id_modalidade = m.id_modalidade
+GROUP BY p.nome, m.categoria
+ORDER BY p.nome ASC, "Ouro" DESC;
+
+SELECT * FROM v_desempenho_por_categoria;
+
+-- =========================================================
+-- VIEW 3: PAÍSES MULTIMEDALHISTAS
+-- Objetivo: Cria uma matriz de desempenho se o país conquistou Ouro, Prata e Bronze na edição.
+-- A última coluna exibe o total acumulado.
+-- =========================================================
+
+CREATE OR REPLACE VIEW v_paises_multimedalhistas AS
+SELECT 
+    p.nome AS "País",
+    -- Verificação para 2024
+    MAX(CASE WHEN o.ano = 2024 THEN 'X' ELSE '-' END) AS "2024",
+    -- Verificação para 2021
+    MAX(CASE WHEN o.ano = 2021 THEN 'X' ELSE '-' END) AS "2021",
+    -- Verificação para 2016
+    MAX(CASE WHEN o.ano = 2016 THEN 'X' ELSE '-' END) AS "2016",
+    -- Verificação para 2012
+    MAX(CASE WHEN o.ano = 2012 THEN 'X' ELSE '-' END) AS "2012",
+    -- Total de vezes que foi multimedalhista (usando a função de contagem)
+    COUNT(r.id_resultado) AS "Total"
+FROM pais p
+JOIN resultado r ON p.id_pais = r.id_pais
+JOIN olimpiada o ON r.id_olimpiada = o.id_olimpiada
+WHERE r.ouro > 0 AND r.prata > 0 AND r.bronze > 0
+GROUP BY p.nome
+ORDER BY "Total" DESC, p.nome ASC;
+
+SELECT * FROM v_paises_multimedalhistas;
+
+-- =========================================================
+-- VIEW 4: SOBERANIA POR MODALIDADE
+-- Objetivo: Mostrar qual país tem mais medalhas de ouro acumuladas em um esporte específico.
+-- =========================================================
+
+CREATE OR REPLACE VIEW v_soberania_por_modalidade AS
+SELECT DISTINCT ON (m.nome_modalidade)
+    m.nome_modalidade,
+    p.nome AS pais_soberano,
+    SUM(r.ouro) OVER(PARTITION BY m.id_modalidade, p.id_pais) AS ouros_acumulados
+FROM modalidade m
+JOIN resultado r ON m.id_modalidade = r.id_modalidade
+JOIN pais p ON r.id_pais = p.id_pais
+ORDER BY m.nome_modalidade, ouros_acumulados DESC;
+
+SELECT * FROM v_soberania_por_modalidade;
+
+-- =========================================================
+-- VIEW 5: MEDALHAS POR CONTINENTE
+-- Objetivo: Um relatório geopolítico que soma as medalhas agrupadas pelo continente dos países.
+-- =========================================================
+
+CREATE OR REPLACE VIEW v_medalhas_por_continente AS
+SELECT 
+    p.continente AS "Continente",
+    COALESCE(SUM(r.ouro), 0) AS "Ouro",
+    COALESCE(SUM(r.prata), 0) AS "Prata",
+    COALESCE(SUM(r.bronze), 0) AS "Bronze",
+    COALESCE(SUM(r.ouro + r.prata + r.bronze), 0) AS "Total"
+FROM pais p
+LEFT JOIN resultado r ON p.id_pais = r.id_pais
+GROUP BY p.continente
+ORDER BY "Ouro" DESC, "Total" DESC;
+
+SELECT * FROM v_medalhas_por_continente;

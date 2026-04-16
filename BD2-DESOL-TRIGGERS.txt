@@ -1,0 +1,111 @@
+-- =========================================================
+-- REGRA DE NEGÓCIO 1: INTEGRIDADE DAS MEDALHAS
+-- TRIGGER: BEFORE INSERT OR UPDATE
+-- Objetivo: Impedir que alguém insira valores negativos para medalhas (o que seria impossível fisicamente).
+-- =========================================================
+
+-- Função para validar os valores das medalhas
+CREATE OR REPLACE FUNCTION fn_valida_medalhas()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Objetivo: Estrutura condicional para barrar valores impossíveis
+    IF NEW.ouro < 0 OR NEW.prata < 0 OR NEW.bronze < 0 THEN
+        RAISE EXCEPTION 'Erro de Integridade: Um país não pode ter medalhas negativas!';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger: Dispara antes de salvar para garantir que o dado nem chegue a ser gravado se estiver errado.
+CREATE TRIGGER trg_check_medalhas
+BEFORE INSERT OR UPDATE ON resultado
+FOR EACH ROW
+EXECUTE FUNCTION fn_valida_medalhas();
+
+-- Testes:
+-- INSERT INTO resultado (id_olimpiada, id_pais, id_modalidade, ouro, prata, bronze) VALUES (10, 1, 1, -5, 2, 2);
+-- UPDATE resultado SET prata = -10 WHERE id_resultado = (SELECT MIN(id_resultado) FROM resultado);
+
+-- =========================================================
+-- REGRA DE NEGÓCIO 2: LOG AUDITORIA (CORRIGIDA - AGORA COBRE UPDATE)
+-- TRIGGER: AFTER INSERT OR DELETE OR UPDATE
+-- Objetivo: Sempre que um resultado for inserido, alterado ou apagado, o sistema deve registrar
+-- a operação no log de auditoria.
+-- ALTERAÇÃO: Adicionado suporte para UPDATE, além de INSERT e DELETE.
+-- =========================================================
+
+-- Registrar no log tanto a adição, quanto a remoção e a alteração de medalhas.
+-- Esta função utiliza a variável especial TG_OP do PostgreSQL para saber o tipo de operação.
+CREATE OR REPLACE FUNCTION fn_auditoria_medalhas()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_nome_pais VARCHAR;
+    v_mensagem TEXT;
+BEGIN
+    -- Identificar o nome do país envolvido na operação
+    IF (TG_OP = 'INSERT') THEN
+        SELECT nome INTO v_nome_pais FROM pais WHERE id_pais = NEW.id_pais;
+        v_mensagem := 'Novas medalhas para ' || v_nome_pais || 
+                      ': Ouro(' || NEW.ouro || '), Prata(' || NEW.prata || '), Bronze(' || NEW.bronze || ')';
+        INSERT INTO log_medalhas (operacao, mensagem) VALUES ('INSERÇÃO', v_mensagem);
+        RETURN NEW;
+        
+    ELSIF (TG_OP = 'DELETE') THEN
+        SELECT nome INTO v_nome_pais FROM pais WHERE id_pais = OLD.id_pais;
+        v_mensagem := 'Removido registo de medalhas do país ' || v_nome_pais || 
+                      ' da olimpíada ID ' || OLD.id_olimpiada;
+        INSERT INTO log_medalhas (operacao, mensagem) VALUES ('EXCLUSÃO', v_mensagem);
+        RETURN OLD;
+        
+    ELSIF (TG_OP = 'UPDATE') THEN
+        -- ALTERAÇÃO: Novo bloco para capturar atualizações
+        SELECT nome INTO v_nome_pais FROM pais WHERE id_pais = NEW.id_pais;
+        v_mensagem := format('Atualização de medalhas para %s: Ouro %d→%d, Prata %d→%d, Bronze %d→%d',
+                             v_nome_pais,
+                             OLD.ouro, NEW.ouro,
+                             OLD.prata, NEW.prata,
+                             OLD.bronze, NEW.bronze);
+        INSERT INTO log_medalhas (operacao, mensagem) VALUES ('ATUALIZAÇÃO', v_mensagem);
+        RETURN NEW;
+    END IF;
+    
+    RETURN NULL; -- Nunca deve chegar aqui
+END;
+$$ LANGUAGE plpgsql;
+
+-- Disparar após qualquer inserção, atualização ou remoção na tabela de resultados.
+-- ALTERAÇÃO: Adicionado UPDATE ao evento da trigger.
+DROP TRIGGER IF EXISTS trg_auditoria_completa ON resultado;
+CREATE TRIGGER trg_auditoria_completa
+AFTER INSERT OR UPDATE OR DELETE ON resultado
+FOR EACH ROW
+EXECUTE FUNCTION fn_auditoria_medalhas();
+
+-- Testes:
+-- INSERT INTO resultado (id_olimpiada, id_pais, id_modalidade, ouro, prata, bronze) VALUES (10, 1, 3, 5, 5, 5); -- Adicionando medalhas para o Brasil
+-- UPDATE resultado SET ouro = 10 WHERE id_resultado = (SELECT MAX(id_resultado) FROM resultado); -- Atualizando
+-- DELETE FROM resultado WHERE id_resultado = (SELECT MAX(id_resultado) FROM resultado); -- Removendo
+-- SELECT * FROM log_medalhas;
+
+-- =========================================================
+-- REGRA DE NEGÓCIO 3: PROTEÇÃO HISTÓRICA
+-- TRIGGER: INSTEAD OF
+-- Objetivo: Impedir alterações em rankings de edições muito antigas através de uma View. No PostgreSQL,
+-- INSTEAD OF é usado em Views.
+-- =========================================================
+
+-- Criando uma trigger para a View de Quadro Geral
+CREATE OR REPLACE FUNCTION fn_protege_ranking()
+RETURNS TRIGGER AS $$
+BEGIN
+    RAISE EXCEPTION 'Atenção: Não é permitido alterar o Quadro Geral através de uma Visão. Use as tabelas de origem.';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_view_protegida
+INSTEAD OF UPDATE ON v_quadro_medalhas_geral
+FOR EACH ROW
+EXECUTE FUNCTION fn_protege_ranking();
+
+-- Testes:
+-- UPDATE v_quadro_medalhas_geral SET total_ouro = 999 WHERE pais = 'Brasil';
